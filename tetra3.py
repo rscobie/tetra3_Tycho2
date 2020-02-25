@@ -364,14 +364,14 @@ class Tetra3():
 
     def generate_database(self, max_fov, save_as=None, pattern_stars_per_fov=10,
                           catalog_stars_per_fov=20, star_min_magnitude=6.5,
-                          star_min_separation=.05, pattern_max_error=.005):
+                          star_min_separation=.05, pattern_max_error=.005,
+                          observation_year=None):
         """Create a database and optionally save to file. Typically takes 5 to 30 minutes.
 
         Note:
             If you wish to build you own database (e.g. for different field of view) you must
-            download the Yale Bright Star Catalog 'BCS5' from
-            <http://tdc-www.harvard.edu/catalogs/bsc5.html> and place in the tetra3 directory.
-            (Direct download link: <http://tdc-www.harvard.edu/catalogs/BSC5>.)
+            download the Tycho-2 Star Catalog from
+            <http://tdc-www.harvard.edu/software/catalogs/tycho2.html> and place in the tetra3 directory.
 
         Args:
             max_fov (float): Maximum angle (in degrees) between stars in the same pattern.
@@ -385,7 +385,7 @@ class Tetra3():
             star_min_separation (float, optional): Smallest separation (in degrees) allowed between
                 stars (to remove doubles).
             pattern_max_error (float, optional): Maximum difference allowed in pattern for a match.
-
+            observation_year (int, optional): Year that we want to propogate star locations to
         Example:
             ::
 
@@ -408,34 +408,33 @@ class Tetra3():
         pattern_size = 4
         pattern_bins = 25
 
-        self._logger.debug('Loading BCS5 catalogue')
-        num_entries = 9110
-        bsc5_data_type = [('ID', np.float32), ('RA1950', np.float64),
-                          ('Dec1950', np.float64), ('type', np.int16),
-                          ('mag', np.int16), ('RA_pm', np.float32), ('Dec_PM', np.float32)]
-        path = Path(__file__).parent / 'BSC5'
-        with open(path, 'rb') as bsc5_file:
-            # skip first 28 header bytes
-            bsc5_file.seek(28)
-            # read BSC5 catalog into array
-            bsc5 = np.fromfile(bsc5_file, dtype=bsc5_data_type, count=num_entries)
+        self._logger.debug('Loading Tycho-2 catalogue')
+        num_entries = 2539913
+        
+        path = Path(__file__).parent / 'catalog.dat'
+        with open(path, 'rb') as tycho2_file:
+            # read tycho2 catalog into array
+            tycho2 = np.genfromtxt(tycho2_file, missing_values='', delimiter='|')
             # year to propagate positions to:
-            year = datetime.utcnow().year
-            # retrieve star positions, magnitudes and ids from BSC5 catalog
+            if(observation_year == None):
+                year = datetime.utcnow().year
+            else:
+                year = observation_year
+            # retrieve star positions, magnitudes and ids from tycho2 catalog
             star_table = np.zeros((num_entries, 6), dtype=np.float32)
-            for (i, entry) in enumerate(bsc5):  # star_num in range(num_entries):
+            for (i, entry) in enumerate(tycho2):  # star_num in range(num_entries):
                 # only use stars brighter (i.e. lower magnitude)
                 # than the minimum allowable magnitude
-                mag = entry[4] / 100.0
+                mag = entry[19]
                 if mag <= star_min_magnitude:
-                    # retrieve RA in 1950
-                    ra = entry[1]
+                    # retrieve RA in star observation year
+                    ra = entry[24]
                     # correct RA to modern day
-                    ra += entry[5] * (year - 1950)
-                    # retrieve DEC in 1950
-                    dec = entry[2]
+                    ra += entry[4]/3600 * (year - entry[10])
+                    # retrieve DEC in observation year
+                    dec = entry[25]
                     # correct DEC to modern day
-                    dec += entry[6] * (year - 1950)
+                    dec += entry[5]/3600 * (year - entry[11])
                     # skip blank star entries
                     if ra == 0.0 and dec == 0.0:
                         continue
